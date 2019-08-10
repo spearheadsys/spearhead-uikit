@@ -1,2 +1,1 @@
-# spearhead-uikit
-Spearhead uikit3 custom theme
+# Spearhead custom uikit theme
