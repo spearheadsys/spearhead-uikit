@@ -8,6 +8,7 @@
  * 2. Prevent adjustments of font size after orientation changes in iOS.
  * 3. Style
  */
+@import url('https://fonts.googleapis.com/css?family=Nunito+Sans&display=swap');
 html {
   /* 1 */
   font-family: 'Nunito Sans', sans-serif;
