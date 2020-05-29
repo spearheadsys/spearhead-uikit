@@ -1,10 +1,10 @@
-/*! UIkit 3.1.7 | http://www.getuikit.com | (c) 2014 - 2019 YOOtheme | MIT License */
+/*! UIkit 3.5.3 | https://www.getuikit.com | (c) 2014 - 2020 YOOtheme | MIT License */
 
 (function (global, factory) {
     typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('uikit-util')) :
     typeof define === 'function' && define.amd ? define('uikitlightbox_panel', ['uikit-util'], factory) :
     (global = global || self, global.UIkitLightbox_panel = factory(global.UIkit.util));
-}(this, function (uikitUtil) { 'use strict';
+}(this, (function (uikitUtil) { 'use strict';
 
     var Animations = {
 
@@ -133,8 +133,7 @@
             animation: 'list',
             duration: Number,
             origin: String,
-            transition: String,
-            queued: Boolean
+            transition: String
         },
 
         data: {
@@ -143,7 +142,6 @@
             duration: 200,
             origin: false,
             transition: 'linear',
-            queued: false,
 
             initProps: {
                 overflow: '',
@@ -186,49 +184,9 @@
             toggleElement: function(targets, show, animate) {
                 var this$1 = this;
 
-                return new uikitUtil.Promise(function (resolve) {
-
-                    targets = uikitUtil.toNodes(targets);
-
-                    var all = function (targets) { return uikitUtil.Promise.all(targets.map(function (el) { return this$1._toggleElement(el, show, animate); })); };
-                    var toggled = targets.filter(function (el) { return this$1.isToggled(el); });
-                    var untoggled = targets.filter(function (el) { return !uikitUtil.includes(toggled, el); });
-
-                    var p;
-
-                    if (!this$1.queued || !uikitUtil.isUndefined(animate) || !uikitUtil.isUndefined(show) || !this$1.hasAnimation || targets.length < 2) {
-
-                        p = all(untoggled.concat(toggled));
-
-                    } else {
-
-                        var body = document.body;
-                        var scroll = body.scrollTop;
-                        var el = toggled[0];
-                        var inProgress = uikitUtil.Animation.inProgress(el) && uikitUtil.hasClass(el, 'uk-animation-leave')
-                                || uikitUtil.Transition.inProgress(el) && el.style.height === '0px';
-
-                        p = all(toggled);
-
-                        if (!inProgress) {
-                            p = p.then(function () {
-                                var p = all(untoggled);
-                                body.scrollTop = scroll;
-                                return p;
-                            });
-                        }
-
-                    }
-
-                    p.then(resolve, uikitUtil.noop);
-
-                });
-            },
-
-            toggleNow: function(targets, show) {
-                var this$1 = this;
-
-                return new uikitUtil.Promise(function (resolve) { return uikitUtil.Promise.all(uikitUtil.toNodes(targets).map(function (el) { return this$1._toggleElement(el, show, false); })).then(resolve, uikitUtil.noop); });
+                return uikitUtil.Promise.all(uikitUtil.toNodes(targets).map(function (el) { return new uikitUtil.Promise(function (resolve) { return this$1._toggleElement(el, show, animate).then(resolve, uikitUtil.noop); }
+                    ); }
+                ));
             },
 
             isToggled: function(el) {
@@ -277,7 +235,7 @@
                     this$1.$update(el);
                 };
 
-                return promise ? promise.then(final) : uikitUtil.Promise.resolve(final());
+                return (promise || uikitUtil.Promise.resolve()).then(final);
             },
 
             _toggle: function(el, toggled) {
@@ -300,7 +258,11 @@
                 uikitUtil.$$('[autofocus]', el).some(function (el) { return uikitUtil.isVisible(el) ? el.focus() || true : el.blur(); });
 
                 this.updateAria(el);
-                changed && this.$update(el);
+
+                if (changed) {
+                    uikitUtil.trigger(el, 'toggled', [this]);
+                    this.$update(el);
+                }
             }
 
         }
@@ -336,33 +298,32 @@
             uikitUtil.height(el, currentHeight);
 
             return (show
-                    ? uikitUtil.Transition.start(el, uikitUtil.assign({}, initProps, {overflow: 'hidden', height: endHeight}), Math.round(duration * (1 - currentHeight / endHeight)), transition)
-                    : uikitUtil.Transition.start(el, hideProps, Math.round(duration * (currentHeight / endHeight)), transition).then(function () { return _toggle(el, false); })
+                ? uikitUtil.Transition.start(el, uikitUtil.assign({}, initProps, {overflow: 'hidden', height: endHeight}), Math.round(duration * (1 - currentHeight / endHeight)), transition)
+                : uikitUtil.Transition.start(el, hideProps, Math.round(duration * (currentHeight / endHeight)), transition).then(function () { return _toggle(el, false); })
             ).then(function () { return uikitUtil.css(el, initProps); });
 
         };
     }
 
-    function toggleAnimation(ref) {
-        var animation = ref.animation;
-        var duration = ref.duration;
-        var origin = ref.origin;
-        var _toggle = ref._toggle;
-
+    function toggleAnimation(cmp) {
         return function (el, show) {
 
             uikitUtil.Animation.cancel(el);
 
+            var animation = cmp.animation;
+            var duration = cmp.duration;
+            var _toggle = cmp._toggle;
+
             if (show) {
                 _toggle(el, true);
-                return uikitUtil.Animation.in(el, animation[0], duration, origin);
+                return uikitUtil.Animation.in(el, animation[0], duration, cmp.origin);
             }
 
-            return uikitUtil.Animation.out(el, animation[1] || animation[0], duration, origin).then(function () { return _toggle(el, false); });
+            return uikitUtil.Animation.out(el, animation[1] || animation[0], duration, cmp.origin).then(function () { return _toggle(el, false); });
         };
     }
 
-    var active;
+    var active = [];
 
     var Modal = {
 
@@ -406,7 +367,7 @@
 
         beforeDisconnect: function() {
             if (this.isToggled()) {
-                this.toggleNow(this.$el, false);
+                this.toggleElement(this.$el, false, false);
             }
         },
 
@@ -440,7 +401,10 @@
                     }
 
                     e.preventDefault();
-                    this.toggle();
+
+                    if (this.isToggled() === uikitUtil.includes(active, this)) {
+                        this.toggle();
+                    }
                 }
 
             },
@@ -452,26 +416,16 @@
 
                 handler: function(e) {
 
-                    var prev = active && active !== this && active;
-
-                    active = this;
-
-                    if (prev) {
-                        if (this.stack) {
-                            this.prev = prev;
-                        } else {
-
-                            active = prev;
-                            prev.hide().then(this.show);
-                            e.preventDefault();
-
-                        }
-
-                        return;
+                    if (uikitUtil.includes(active, this)) {
+                        return false;
                     }
 
-                    registerEvents();
-
+                    if (!this.stack && active.length) {
+                        uikitUtil.Promise.all(active.map(function (modal) { return modal.hide(); })).then(this.show);
+                        e.preventDefault();
+                    } else {
+                        active.push(this);
+                    }
                 }
 
             },
@@ -483,27 +437,46 @@
                 self: true,
 
                 handler: function() {
+                    var this$1 = this;
 
-                    if (!uikitUtil.hasClass(document.documentElement, this.clsPage)) {
-                        this.scrollbarWidth = uikitUtil.width(window) - uikitUtil.width(document);
-                        uikitUtil.css(document.body, 'overflowY', this.scrollbarWidth && this.overlay ? 'scroll' : '');
+
+                    if (uikitUtil.width(window) - uikitUtil.width(document) && this.overlay) {
+                        uikitUtil.css(document.body, 'overflowY', 'scroll');
                     }
+
+                    this.stack && uikitUtil.css(this.$el, 'zIndex', uikitUtil.css(this.$el, 'zIndex') + active.length);
 
                     uikitUtil.addClass(document.documentElement, this.clsPage);
 
-                }
+                    if (this.bgClose) {
+                        uikitUtil.once(this.$el, 'hide', uikitUtil.on(document, uikitUtil.pointerDown, function (ref) {
+                            var target = ref.target;
 
-            },
 
-            {
+                            if (uikitUtil.last(active) !== this$1 || this$1.overlay && !uikitUtil.within(target, this$1.$el) || uikitUtil.within(target, this$1.panel)) {
+                                return;
+                            }
 
-                name: 'hide',
+                            uikitUtil.once(document, (uikitUtil.pointerUp + " " + uikitUtil.pointerCancel + " scroll"), function (ref) {
+                                var defaultPrevented = ref.defaultPrevented;
+                                var type = ref.type;
+                                var newTarget = ref.target;
 
-                self: true,
+                                if (!defaultPrevented && type === uikitUtil.pointerUp && target === newTarget) {
+                                    this$1.hide();
+                                }
+                            }, true);
 
-                handler: function() {
-                    if (!active || active === this && !this.prev) {
-                        deregisterEvents();
+                        }), {self: true});
+                    }
+
+                    if (this.escClose) {
+                        uikitUtil.once(this.$el, 'hide', uikitUtil.on(document, 'keydown', function (e) {
+                            if (e.keyCode === 27 && uikitUtil.last(active) === this$1) {
+                                e.preventDefault();
+                                this$1.hide();
+                            }
+                        }), {self: true});
                     }
                 }
 
@@ -516,33 +489,18 @@
                 self: true,
 
                 handler: function() {
+                    var this$1 = this;
 
-                    var found;
-                    var ref = this;
-                    var prev = ref.prev;
 
-                    active = active && active !== this && active || prev;
+                    active.splice(active.indexOf(this), 1);
 
-                    if (!active) {
-
+                    if (!active.length) {
                         uikitUtil.css(document.body, 'overflowY', '');
-
-                    } else {
-                        while (prev) {
-
-                            if (prev.clsPage === this.clsPage) {
-                                found = true;
-                                break;
-                            }
-
-                            // eslint-disable-next-line prefer-destructuring
-                            prev = prev.prev;
-
-                        }
-
                     }
 
-                    if (!found) {
+                    uikitUtil.css(this.$el, 'zIndex', '');
+
+                    if (!active.some(function (modal) { return modal.clsPage === this$1.clsPage; })) {
                         uikitUtil.removeClass(document.documentElement, this.clsPage);
                     }
 
@@ -574,46 +532,11 @@
 
             hide: function() {
                 return this.toggleElement(this.$el, false, animate(this));
-            },
-
-            getActive: function() {
-                return active;
             }
 
         }
 
     };
-
-    var events;
-
-    function registerEvents() {
-
-        if (events) {
-            return;
-        }
-
-        events = [
-            uikitUtil.on(document, uikitUtil.pointerUp, function (ref) {
-                var target = ref.target;
-                var defaultPrevented = ref.defaultPrevented;
-
-                if (active && active.bgClose && !defaultPrevented && (!active.overlay || uikitUtil.within(target, active.$el)) && !uikitUtil.within(target, active.panel)) {
-                    active.hide();
-                }
-            }),
-            uikitUtil.on(document, 'keydown', function (e) {
-                if (e.keyCode === 27 && active && active.escClose) {
-                    e.preventDefault();
-                    active.hide();
-                }
-            })
-        ];
-    }
-
-    function deregisterEvents() {
-        events && events.forEach(function (unbind) { return unbind(); });
-        events = null;
-    }
 
     function animate(ref) {
         var transitionElement = ref.transitionElement;
@@ -626,9 +549,9 @@
                     _toggle(el, show);
 
                     var off = uikitUtil.once(transitionElement, 'transitionstart', function () {
-                        uikitUtil.once(transitionElement, 'transitionend transitioncancel', resolve, false, function (e) { return e.target === transitionElement; });
+                        uikitUtil.once(transitionElement, 'transitionend transitioncancel', resolve, {self: true});
                         clearTimeout(timer);
-                    }, false, function (e) { return e.target === transitionElement; });
+                    }, {self: true});
 
                     var timer = setTimeout(function () {
                         off();
@@ -760,7 +683,7 @@
 
                 name: 'visibilitychange',
 
-                el: document,
+                el: uikitUtil.inBrowser && document,
 
                 filter: function() {
                     return this.autoplay;
@@ -850,6 +773,7 @@
 
                     if (!this.draggable
                         || !uikitUtil.isTouch(e) && hasTextNodesOnly(e.target)
+                        || uikitUtil.closest(e.target, uikitUtil.selInput)
                         || e.button > 0
                         || this.length < 2
                     ) {
@@ -868,6 +792,9 @@
                 name: 'touchmove',
                 passive: false,
                 handler: 'move',
+                filter: function() {
+                    return uikitUtil.pointerMove === 'touchmove';
+                },
                 delegate: function() {
                     return this.selSlides;
                 }
@@ -917,7 +844,8 @@
                     this$1.unbindMove = null;
                 };
                 uikitUtil.on(window, 'scroll', this.unbindMove);
-                uikitUtil.on(document, uikitUtil.pointerUp, this.end, true);
+                uikitUtil.on(window.visualViewport, 'resize', this.unbindMove);
+                uikitUtil.on(document, (uikitUtil.pointerUp + " " + uikitUtil.pointerCancel), this.end, true);
 
                 uikitUtil.css(this.list, 'userSelect', 'none');
 
@@ -1007,6 +935,7 @@
             end: function() {
 
                 uikitUtil.off(window, 'scroll', this.unbindMove);
+                uikitUtil.off(window.visualViewport, 'resize', this.unbindMove);
                 this.unbindMove && this.unbindMove();
                 uikitUtil.off(document, uikitUtil.pointerUp, this.end, true);
 
@@ -1082,7 +1011,7 @@
 
 
                 if (this.nav && this.length !== this.nav.children.length) {
-                    uikitUtil.html(this.nav, this.slides.map(function (_, i) { return ("<li " + (this$1.attrItem) + "=\"" + i + "\"><a href=\"#\"></a></li>"); }).join(''));
+                    uikitUtil.html(this.nav, this.slides.map(function (_, i) { return ("<li " + (this$1.attrItem) + "=\"" + i + "\"><a href></a></li>"); }).join(''));
                 }
 
                 uikitUtil.toggleClass(uikitUtil.$$(this.selNavItem, this.$el).concat(this.nav), 'uk-hidden', !this.maxIndex);
@@ -1151,7 +1080,8 @@
             easing: String,
             index: Number,
             finite: Boolean,
-            velocity: Number
+            velocity: Number,
+            selSlides: String
         },
 
         data: function () { return ({
@@ -1198,14 +1128,15 @@
 
             selSlides: function(ref) {
                 var selList = ref.selList;
+                var selSlides = ref.selSlides;
 
-                return (selList + " > *");
+                return (selList + " " + (selSlides || '> *'));
             },
 
             slides: {
 
                 get: function() {
-                    return uikitUtil.toNodes(this.list.children);
+                    return uikitUtil.$$(this.selSlides, this.$el);
                 },
 
                 watch: function() {
@@ -1261,7 +1192,7 @@
                     return;
                 }
 
-                var prevIndex = this.index;
+                var prevIndex = this.getIndex(this.index);
                 var prev = uikitUtil.hasClass(this.slides, this.clsActive) && this.slides[prevIndex];
                 var nextIndex = this.getIndex(index, this.index);
                 var next = this.slides[nextIndex];
@@ -1275,8 +1206,9 @@
                 this.prevIndex = prevIndex;
                 this.index = nextIndex;
 
-                prev && uikitUtil.trigger(prev, 'beforeitemhide', [this]);
-                if (!uikitUtil.trigger(next, 'beforeitemshow', [this, prev])) {
+                if (prev && !uikitUtil.trigger(prev, 'beforeitemhide', [this])
+                    || !uikitUtil.trigger(next, 'beforeitemshow', [this, prev])
+                ) {
                     this.index = this.prevIndex;
                     reset();
                     return;
@@ -1338,7 +1270,7 @@
                 );
 
                 if (!force && !prev) {
-                    this._transitioner.translate(1);
+                    this._translate(1);
                     return uikitUtil.Promise.resolve();
                 }
 
@@ -1349,7 +1281,7 @@
             },
 
             _getDistance: function(prev, next) {
-                return new this._getTransitioner(prev, prev !== next && next).getDistance();
+                return this._getTransitioner(prev, prev !== next && next).getDistance();
             },
 
             _translate: function(percent, prev, next) {
@@ -1414,7 +1346,7 @@
                 var animation = ref.animation;
                 var Animations = ref.Animations;
 
-                return uikitUtil.assign(animation in Animations ? Animations[animation] : Animations.slide, {name: animation});
+                return uikitUtil.assign(Animations[animation] || Animations.slide, {name: animation});
             },
 
             transitionOptions: function() {
@@ -1480,14 +1412,14 @@
             pauseOnHover: false,
             velocity: 2,
             Animations: Animations$1,
-            template: "<div class=\"uk-lightbox uk-overflow-hidden\"> <ul class=\"uk-lightbox-items\"></ul> <div class=\"uk-lightbox-toolbar uk-position-top uk-text-right uk-transition-slide-top uk-transition-opaque\"> <button class=\"uk-lightbox-toolbar-icon uk-close-large\" type=\"button\" uk-close></button> </div> <a class=\"uk-lightbox-button uk-position-center-left uk-position-medium uk-transition-fade\" href=\"#\" uk-slidenav-previous uk-lightbox-item=\"previous\"></a> <a class=\"uk-lightbox-button uk-position-center-right uk-position-medium uk-transition-fade\" href=\"#\" uk-slidenav-next uk-lightbox-item=\"next\"></a> <div class=\"uk-lightbox-toolbar uk-lightbox-caption uk-position-bottom uk-text-center uk-transition-slide-bottom uk-transition-opaque\"></div> </div>"
+            template: "<div class=\"uk-lightbox uk-overflow-hidden\"> <ul class=\"uk-lightbox-items\"></ul> <div class=\"uk-lightbox-toolbar uk-position-top uk-text-right uk-transition-slide-top uk-transition-opaque\"> <button class=\"uk-lightbox-toolbar-icon uk-close-large\" type=\"button\" uk-close></button> </div> <a class=\"uk-lightbox-button uk-position-center-left uk-position-medium uk-transition-fade\" href uk-slidenav-previous uk-lightbox-item=\"previous\"></a> <a class=\"uk-lightbox-button uk-position-center-right uk-position-medium uk-transition-fade\" href uk-slidenav-next uk-lightbox-item=\"next\"></a> <div class=\"uk-lightbox-toolbar uk-lightbox-caption uk-position-bottom uk-text-center uk-transition-slide-bottom uk-transition-opaque\"></div> </div>"
         }); },
 
         created: function() {
 
             var $el = uikitUtil.$(this.template);
             var list = uikitUtil.$(this.selList, $el);
-            this.items.forEach(function () { return uikitUtil.append(list, '<li></li>'); });
+            this.items.forEach(function () { return uikitUtil.append(list, '<li>'); });
 
             this.$mount(uikitUtil.append(this.container, $el));
 
@@ -1578,11 +1510,11 @@
 
                 name: 'keyup',
 
-                el: document,
+                el: uikitUtil.inBrowser && document,
 
                 handler: function(e) {
 
-                    if (!this.isToggled(this.$el)) {
+                    if (!this.isToggled(this.$el) || !this.draggable) {
                         return;
                     }
 
@@ -1611,7 +1543,7 @@
 
                     e.preventDefault();
 
-                    this.toggleNow(this.$el, true);
+                    this.toggleElement(this.$el, true, false);
 
                     this.animation = Animations$1['scale'];
                     uikitUtil.removeClass(e.target, this.clsActive);
@@ -1625,20 +1557,12 @@
 
                 name: 'itemshow',
 
-                handler: function(ref) {
-                    var target = ref.target;
+                handler: function() {
 
+                    uikitUtil.html(this.caption, this.getItem().caption || '');
 
-                    var i = uikitUtil.index(target);
-                    var ref$1 = this.getItem(i);
-                    var caption = ref$1.caption;
-
-                    uikitUtil.css(this.caption, 'display', caption ? '' : 'none');
-                    uikitUtil.html(this.caption, caption);
-
-                    for (var j = 0; j <= this.preload; j++) {
-                        this.loadItem(this.getIndex(i + j));
-                        this.loadItem(this.getIndex(i - j));
+                    for (var j = -this.preload; j <= this.preload; j++) {
+                        this.loadItem(this.index + j);
                     }
 
                 }
@@ -1663,94 +1587,97 @@
                     var this$1 = this;
 
 
-                    var source = item.source;
+                    var src = item.source;
                     var type = item.type;
-                    var alt = item.alt;
+                    var alt = item.alt; if ( alt === void 0 ) alt = '';
+                    var poster = item.poster;
+                    var attrs = item.attrs; if ( attrs === void 0 ) attrs = {};
 
                     this.setItem(item, '<span uk-spinner></span>');
 
-                    if (!source) {
+                    if (!src) {
                         return;
                     }
 
                     var matches;
+                    var iframeAttrs = {
+                        frameborder: '0',
+                        allow: 'autoplay',
+                        allowfullscreen: '',
+                        style: 'max-width: 100%; box-sizing: border-box;',
+                        'uk-responsive': '',
+                        'uk-video': ("" + (this.videoAutoplay))
+                    };
 
                     // Image
-                    if (type === 'image' || source.match(/\.(jp(e)?g|png|gif|svg|webp)($|\?)/i)) {
+                    if (type === 'image' || src.match(/\.(jpe?g|png|gif|svg|webp)($|\?)/i)) {
 
-                        uikitUtil.getImage(source).then(
-                            function (img) { return this$1.setItem(item, ("<img width=\"" + (img.width) + "\" height=\"" + (img.height) + "\" src=\"" + source + "\" alt=\"" + (alt ? alt : '') + "\">")); },
-                            function () { return this$1.setError(item); }
-                        );
-
-                        // Video
-                    } else if (type === 'video' || source.match(/\.(mp4|webm|ogv)($|\?)/i)) {
-
-                        var video = uikitUtil.$(("<video controls playsinline" + (item.poster ? (" poster=\"" + (item.poster) + "\"") : '') + " uk-video=\"" + (this.videoAutoplay) + "\"></video>"));
-                        uikitUtil.attr(video, 'src', source);
-
-                        uikitUtil.once(video, 'error loadedmetadata', function (type) {
-                            if (type === 'error') {
-                                this$1.setError(item);
-                            } else {
-                                uikitUtil.attr(video, {width: video.videoWidth, height: video.videoHeight});
-                                this$1.setItem(item, video);
-                            }
-                        });
-
-                        // Iframe
-                    } else if (type === 'iframe' || source.match(/\.(html|php)($|\?)/i)) {
-
-                        this.setItem(item, ("<iframe class=\"uk-lightbox-iframe\" src=\"" + source + "\" frameborder=\"0\" allowfullscreen></iframe>"));
-
-                        // YouTube
-                    } else if ((matches = source.match(/\/\/.*?youtube(-nocookie)?\.[a-z]+\/watch\?v=([^&\s]+)/) || source.match(/()youtu\.be\/(.*)/))) {
-
-                        var id = matches[2];
-                        var setIframe = function (width, height) {
-                            if ( width === void 0 ) width = 640;
-                            if ( height === void 0 ) height = 450;
-
-                            return this$1.setItem(item, getIframe(("https://www.youtube" + (matches[1] || '') + ".com/embed/" + id), width, height, this$1.videoAutoplay));
-                        };
-
-                        uikitUtil.getImage(("https://img.youtube.com/vi/" + id + "/maxresdefault.jpg")).then(
+                        uikitUtil.getImage(src, attrs.srcset, attrs.size).then(
                             function (ref) {
                                 var width = ref.width;
                                 var height = ref.height;
 
-                                // YouTube default 404 thumb, fall back to low resolution
-                                if (width === 120 && height === 90) {
-                                    uikitUtil.getImage(("https://img.youtube.com/vi/" + id + "/0.jpg")).then(
-                                        function (ref) {
-                                            var width = ref.width;
-                                            var height = ref.height;
-
-                                            return setIframe(width, height);
-                                    },
-                                        setIframe
-                                    );
-                                } else {
-                                    setIframe(width, height);
-                                }
-                            },
-                            setIframe
+                                return this$1.setItem(item, createEl('img', uikitUtil.assign({src: src, width: width, height: height, alt: alt}, attrs)));
+                        },
+                            function () { return this$1.setError(item); }
                         );
 
-                        // Vimeo
-                    } else if ((matches = source.match(/(\/\/.*?)vimeo\.[a-z]+\/([0-9]+).*?/))) {
+                    // Video
+                    } else if (type === 'video' || src.match(/\.(mp4|webm|ogv)($|\?)/i)) {
 
-                        uikitUtil.ajax(("https://vimeo.com/api/oembed.json?maxwidth=1920&url=" + (encodeURI(source))), {responseType: 'json', withCredentials: false})
-                            .then(
-                                function (ref) {
-                                    var ref_response = ref.response;
-                                    var height = ref_response.height;
-                                    var width = ref_response.width;
+                        var video = createEl('video', uikitUtil.assign({
+                            src: src,
+                            poster: poster,
+                            controls: '',
+                            playsinline: '',
+                            'uk-video': ("" + (this.videoAutoplay))
+                        }, attrs));
 
-                                    return this$1.setItem(item, getIframe(("https://player.vimeo.com/video/" + (matches[2])), width, height, this$1.videoAutoplay));
+                        uikitUtil.on(video, 'loadedmetadata', function () {
+                            uikitUtil.attr(video, {width: video.videoWidth, height: video.videoHeight});
+                            this$1.setItem(item, video);
+                        });
+                        uikitUtil.on(video, 'error', function () { return this$1.setError(item); });
+
+                    // Iframe
+                    } else if (type === 'iframe' || src.match(/\.(html|php)($|\?)/i)) {
+
+                        this.setItem(item, createEl('iframe', uikitUtil.assign({
+                            src: src,
+                            frameborder: '0',
+                            allowfullscreen: '',
+                            class: 'uk-lightbox-iframe'
+                        }, attrs)));
+
+                    // YouTube
+                    } else if ((matches = src.match(/\/\/(?:.*?youtube(-nocookie)?\..*?[?&]v=|youtu\.be\/)([\w-]{11})[&?]?(.*)?/))) {
+
+                        this.setItem(item, createEl('iframe', uikitUtil.assign({
+                            src: ("https://www.youtube" + (matches[1] || '') + ".com/embed/" + (matches[2]) + (matches[3] ? ("?" + (matches[3])) : '')),
+                            width: 1920,
+                            height: 1080
+                        }, iframeAttrs, attrs)));
+
+                    // Vimeo
+                    } else if ((matches = src.match(/\/\/.*?vimeo\.[a-z]+\/(\d+)[&?]?(.*)?/))) {
+
+                        uikitUtil.ajax(("https://vimeo.com/api/oembed.json?maxwidth=1920&url=" + (encodeURI(src))), {
+                            responseType: 'json',
+                            withCredentials: false
+                        }).then(
+                            function (ref) {
+                                var ref_response = ref.response;
+                                var height = ref_response.height;
+                                var width = ref_response.width;
+
+                                return this$1.setItem(item, createEl('iframe', uikitUtil.assign({
+                                src: ("https://player.vimeo.com/video/" + (matches[1]) + (matches[2] ? ("?" + (matches[2])) : '')),
+                                width: width,
+                                height: height
+                            }, iframeAttrs, attrs)));
                         },
-                                function () { return this$1.setError(item); }
-                            );
+                            function () { return this$1.setError(item); }
+                        );
 
                     }
 
@@ -1768,24 +1695,23 @@
 
                 var item = this.getItem(index);
 
-                if (item.content) {
-                    return;
+                if (!this.getSlide(item).childElementCount) {
+                    uikitUtil.trigger(this.$el, 'itemload', [item]);
                 }
-
-                uikitUtil.trigger(this.$el, 'itemload', [item]);
             },
 
             getItem: function(index) {
                 if ( index === void 0 ) index = this.index;
 
-                return this.items[index] || {};
+                return this.items[uikitUtil.getIndex(index, this.slides)];
             },
 
             setItem: function(item, content) {
-                uikitUtil.assign(item, {content: content});
-                var el = uikitUtil.html(this.slides[this.items.indexOf(item)], content);
-                uikitUtil.trigger(this.$el, 'itemloaded', [this, el]);
-                this.$update(el);
+                uikitUtil.trigger(this.$el, 'itemloaded', [this, uikitUtil.html(this.getSlide(item), content) ]);
+            },
+
+            getSlide: function(item) {
+                return this.slides[this.items.indexOf(item)];
             },
 
             setError: function(item) {
@@ -1809,11 +1735,11 @@
 
     };
 
-    function getIframe(src, width, height, autoplay) {
-        return ("<iframe src=\"" + src + "\" width=\"" + width + "\" height=\"" + height + "\" style=\"max-width: 100%; box-sizing: border-box;\" frameborder=\"0\" allowfullscreen uk-video=\"autoplay: " + autoplay + "\" uk-responsive></iframe>");
+    function createEl(tag, attrs) {
+        var el = uikitUtil.fragment(("<" + tag + ">"));
+        uikitUtil.attr(el, attrs);
+        return el;
     }
-
-    /* global UIkit, 'lightboxPanel' */
 
     if (typeof window !== 'undefined' && window.UIkit) {
         window.UIkit.component('lightboxPanel', Component);
@@ -1821,4 +1747,4 @@
 
     return Component;
 
-}));
+})));
